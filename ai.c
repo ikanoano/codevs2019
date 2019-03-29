@@ -180,9 +180,10 @@ int vanish(uint64_t field[18]) {
   int vcount = 0;
   for (int y = 0; y < 18; y++) {
     for (int x = 0; x < 10; x++) {
-      if(mask_vanish[y] & (1<<(6*x))) vcount++;
+      if(mask_vanish[y] & (0x1ul<<(6*x))) vcount++;
     }
   }
+  assert(vcount>0);
   return vcount;
 }
 

@@ -216,11 +216,40 @@ int isfatal(const player_state_t *s) {
   return s->field[16]!=0 || s->turn_num>=500;
 }
 
+float static_eval(player_state_t *s) {
+  float score = 0;
+
+  // count spaces and blocks around "5" excluding ojama
+  uint16_t flag[18] = {0};
+  uint16_t ojama[18] = {0};
+  uint16_t zero[18] = {0};
+  for (int y = 0; y < 18; y++) {
+    uint64_t row = s->field[y];
+    for (int x = 0; x < 10; x++) {
+      int val = row & 0x1F;
+      row >>= 5;
+      if(val==0)  zero[y]   |= 1<<x;
+      if(val==11) ojama[y]  |= 1<<x;
+      if(val!=5) continue;
+      if(x>0) {flag[y-1] |= 7<<(x-1);}
+              {flag[y  ] |= 7<<(x-1);}
+      if(x<18){flag[y+1] |= 7<<(x-1);}
+    }
+  }
+  int around5=0, effective5=0;
+  for (int y = 0; y < 18; y++) {
+    around5     += __builtin_popcount(flag[y] & ~ojama[y]);
+    effective5  += __builtin_popcount(flag[y] & ~ojama[y] & ~zero[y]);
+  }
+  score += skill_ojama[around5]*64;
+  score += skill_ojama[effective5]*64;
+}
+
 float drop_and_eval(player_state_t *s, int offset, int rotnum) {
   float score = 0;
   // drop
   int chain = drop(offset, rotnum, s->field, packs[s->turn_num]);
-  score +=chain_ojama[chain]*128;
+  score += chain_ojama[chain]*256;
 
   // fatal
   if(isfatal(s))    return -9999999999999999;
@@ -228,24 +257,6 @@ float drop_and_eval(player_state_t *s, int offset, int rotnum) {
   if(s->field[15])  score -= 1024*1024*4;
   if(s->field[14])  score -= 1024*512;
   if(s->field[13])  score -= 1024*256;
-
-  // spaces around "5" excluding ojama
-  uint16_t flag[10] = {0}; // y axis and x axis are inverted
-  uint16_t ojama[10] = {0}; // y axis and x axis are inverted
-  for (int y = 0; y < 16; y++) {
-    for (int x = 0; x < 10; x++) {
-      int val = get_field(s->field, y, x);
-      if(val==11) ojama[x] |= 1<<y;
-      if(val!=5) continue;
-      if(x>0) {flag[x-1] |= 7<<(y-1);}
-              {flag[x  ] |= 7<<(y-1);}
-      if(x<9) {flag[x+1] |= 7<<(y-1);}
-    }
-  }
-  int around5 = 0;
-  for (int x = 0; x < 10; x++)
-    around5 += __builtin_popcount(flag[x] & ~ojama[x]);
-  score += skill_ojama[around5]*32;
 
   return score;
 }

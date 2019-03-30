@@ -1,5 +1,5 @@
 TARGET=/tmp/aaikiso
-CCFLAGS=-lm -std=c11 -march=native -O2
+CCFLAGS=-lm -std=c11 -O3 -mtune=native -march=native -mfpmath=both
 SRCS=ai.c
 
 all: /tmp/aaikiso

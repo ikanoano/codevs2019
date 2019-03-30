@@ -151,7 +151,7 @@ int vanish(uint64_t field[18]) {
   for (int y = 0; y < 18; y++) {
     uint64_t  wa_yoko = field[y] + (field[y]>>6);
     for (int x = 0; x<9; x++, wa_yoko>>=6) {
-      if((wa_yoko & 0x1Ful) == 10) {
+      if((wa_yoko & 0xF) == 10) {
         mask_vanish[y] |= 0xFFFul<<(6*x); // vanish
         anyvanish = 1;
         //DEBUG("X%lx\n", wa_yoko);
@@ -165,21 +165,21 @@ int vanish(uint64_t field[18]) {
     uint64_t  wa2 = (field[y]>>6) + (field[y+1]   );
     uint64_t  wa3 = (field[y]   ) + (field[y+1]>>6);
     for (int x = 0; x < 10; x++, wa1>>=6, wa2>>=6, wa3>>=6) {
-      if((wa1 & 0x1Ful) == 10) {
+      if((wa1 & 0xF) == 10) {
         // tate vanish
         mask_vanish[y+1] |= 0x3Ful<<(6*x);
         mask_vanish[y  ] |= 0x3Ful<<(6*x);
         anyvanish = 1;
         //DEBUG("Y%lx\n", wa1);
       }
-      if((wa2 & 0x1Ful) == 10) {
+      if((wa2 & 0xF) == 10) {
         // naname vanish 1
         mask_vanish[y+1] |= 0x3Ful<<(6* x   );
         mask_vanish[y  ] |= 0x3Ful<<(6*(x+1));
         anyvanish = 1;
         //DEBUG("Z%lx\n", wa2);
       }
-      if((wa3 & 0x1Ful) == 10) {
+      if((wa3 & 0xF) == 10) {
         // naname vanish 2
         mask_vanish[y+1] |= 0x3Ful<<(6*(x+1));
         mask_vanish[y  ] |= 0x3Ful<<(6* x   );
@@ -197,11 +197,8 @@ int vanish(uint64_t field[18]) {
 
   // count vanished block
   int vcount = 0;
-  for (int y = 0; y < 18; y++) {
-    for (int x = 0; x < 10; x++) {
-      if(mask_vanish[y] & (0x1ul<<(6*x))) vcount++;
-    }
-  }
+  for (int y = 0; y < 18; y++)
+    vcount += __builtin_popcountll(mask_vanish[y] & 0x041041041041041ul);
   assert(vcount>0);
   return vcount;
 }

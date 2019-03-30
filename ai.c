@@ -28,9 +28,16 @@ void sanitize_end() {
 
 void dump_field(int turn, uint64_t field[18]) {
   fprintf(logger, "turn %3d\n", turn);
+  fprintf(logger, "   9876543210\n");
   for (int y = 17; y >= 0; y--) {
+    fprintf(logger, "%2d|", y);
     for (int x = 9; x >= 0; x--) {
-      fprintf(logger, "%2lx", ((field[y]>>(6*x)) & 0x3Ful));
+      int val = (field[y]>>(6*x)) & 0x3Ful;
+      char c =
+        val ==  0 ? '_' :
+        val == 11 ? '#' :
+                    val+'0';
+      fprintf(logger, "%c", c);
     }
     fprintf(logger, "\n");
   }
@@ -82,6 +89,9 @@ typedef struct {
   int       skill_charge;
   uint64_t  field[18];
 } player_state_t;
+static inline int get_field(uint64_t field[18], int y, int x) {
+  return (field[y] >> (6*x)) & 0x3Ful;
+}
 
 void turn_input_player(player_state_t *s) {
   scanf("%d", &s->time_left);
@@ -138,8 +148,11 @@ int vanish(uint64_t field[18]) {
   for (int y = 0; y < 18; y++) {
     uint64_t  wa_yoko = field[y] + (field[y]>>6);
     for (int x = 0; x<9; x++, wa_yoko>>=6) {
-      if((wa_yoko & 0x1Ful) == 10) mask_vanish[y] |= 0xFFFul<<(6*x); // vanish
-      anyvanish = 1;
+      if((wa_yoko & 0x1Ful) == 10) {
+        mask_vanish[y] |= 0xFFFul<<(6*x); // vanish
+        anyvanish = 1;
+        //DEBUG("X%lx\n", wa_yoko);
+      }
     }
   }
 
@@ -154,18 +167,21 @@ int vanish(uint64_t field[18]) {
         mask_vanish[y+1] |= 0x3Ful<<(6*x);
         mask_vanish[y  ] |= 0x3Ful<<(6*x);
         anyvanish = 1;
+        //DEBUG("Y%lx\n", wa1);
       }
       if((wa2 & 0x1Ful) == 10) {
         // naname vanish 1
         mask_vanish[y+1] |= 0x3Ful<<(6* x   );
         mask_vanish[y  ] |= 0x3Ful<<(6*(x+1));
         anyvanish = 1;
+        //DEBUG("Z%lx\n", wa2);
       }
       if((wa3 & 0x1Ful) == 10) {
         // naname vanish 2
         mask_vanish[y+1] |= 0x3Ful<<(6*(x+1));
         mask_vanish[y  ] |= 0x3Ful<<(6* x   );
         anyvanish = 1;
+        //DEBUG("W%lx\n", wa3);
       }
     }
   }
@@ -199,12 +215,84 @@ int drop(int offset, int rotnum, uint64_t field[18], pack_t pack) {
   assert((field[16] & mask) == 0);
   field[17] |= (((uint64_t)pack.b[0]<<6) | pack.b[1]) << 6*(8-offset);
   field[16] |= (((uint64_t)pack.b[3]<<6) | pack.b[2]) << 6*(8-offset);
-  int combo = -1;
+  int chain = -1;
   do {
     fall(field);
-    combo++;
+    chain++;
   } while(vanish(field));
-  return combo;
+  return chain;
+}
+
+int isfatal(const player_state_t *s) {
+  return s->field[16]!=0 || s->turn_num>=500;
+}
+
+float drop_and_eval(player_state_t *s, int offset, int rotnum) {
+  float score = 0;
+  // drop
+  int chain = drop(offset, rotnum, s->field, packs[s->turn_num]);
+  score +=chain_ojama[chain]*128;
+
+  // fatal
+  if(isfatal(s))    return -9999999999999999;
+  // danger
+  if(s->field[15])  score -= 1024*1024*4;
+  if(s->field[14])  score -= 1024*512;
+  if(s->field[13])  score -= 1024*256;
+
+  // spaces around "5" excluding ojama
+  uint16_t flag[10] = {0}; // y axis and x axis are inverted
+  uint16_t ojama[10] = {0}; // y axis and x axis are inverted
+  for (int y = 0; y < 16; y++) {
+    for (int x = 0; x < 10; x++) {
+      int val = get_field(s->field, y, x);
+      if(val==11) ojama[x] |= 1<<y;
+      if(val!=5) continue;
+      if(x>0) {flag[x-1] |= 7<<(y-1);}
+              {flag[x  ] |= 7<<(y-1);}
+      if(x<9) {flag[x+1] |= 7<<(y-1);}
+    }
+  }
+  int around5 = 0;
+  for (int x = 0; x < 10; x++)
+    around5 += __builtin_popcount(flag[x] & ~ojama[x]);
+  score += skill_ojama[around5]*32;
+
+  return score;
+}
+
+typedef struct {
+  uint16_t  offset;
+  uint16_t  rotnum;
+  float     score;
+} search_t;
+
+search_t search(player_state_t *s, int recurse_limit) {
+  search_t best_op = {.offset=0, .rotnum=0, .score=-9999999999.0f};
+  for (int offset = 0; offset < 9; offset++) {
+    for (int rotnum = 0; rotnum < 4; rotnum++) {
+      player_state_t t = *s; // copy
+      if(recurse_limit>0) {
+        drop(offset, rotnum, t.field, packs[t.turn_num]);
+        t.turn_num++;
+        if(isfatal(&t)) continue;
+        search_t rslt = search(&t, recurse_limit-1);
+        if(rslt.score<=best_op.score) continue;
+
+        best_op.offset  = offset;
+        best_op.rotnum  = rotnum;
+        best_op.score   = rslt.score;
+      } else {
+        float score = drop_and_eval(&t, offset, rotnum);
+        if(score<=best_op.score) continue;
+
+        best_op.offset  = offset;
+        best_op.rotnum  = rotnum;
+        best_op.score   = score;
+      }
+    }
+  }
+  return best_op;
 }
 
 int main(/*int argc, char const* argv[]*/) {
@@ -212,28 +300,25 @@ int main(/*int argc, char const* argv[]*/) {
   printf("aaikiso\n");
   fflush(stdout);
 
-  uint64_t po[18] = {0};
-  po[17] = 0x040040040040040ul;
-  po[16] = 0x005004003002001ul;
-  po[ 1] = 0x040040040040040ul;
-  po[ 0] = 0x005004003002001ul;
-  dump_field(0,po);
+  //uint64_t po[18] = {0};
+  //po[17] = 0x040040040040040ul;
+  //po[16] = 0x005004003002001ul;
+  //po[ 1] = 0x040040040040040ul;
+  //po[ 0] = 0x005004003002001ul;
+  //dump_field(0,po);
 
   init_input();
 
-  while(1) {
+  for (int turn_num = 0; turn_num < 500; turn_num++) {
     player_state_t  me, rival;
     turn_input(&me, &rival);
 
     if(me.skill_charge>=80) {
       printf("S\n");
     } else {
-      int offset  = rand()%9;
-      int rotnum  = rand()%4;
-      int combo = drop(offset, rotnum, me.field, packs[me.turn_num]);
+      search_t best_op = search(&me, 2);
       dump_field(me.turn_num, me.field);
-      DEBUG("%2d combo\n", combo);
-      printf("%d %d\n", offset, rotnum);
+      printf("%d %d\n", best_op.offset, best_op.rotnum);
     }
     fflush(stdout);
   }

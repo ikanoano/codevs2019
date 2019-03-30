@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #define NELEMS(x) ((int)(sizeof(x) / sizeof((x)[0])))
 #define DEBUG(...) fprintf(stderr, __VA_ARGS__)
@@ -216,8 +217,8 @@ int isfatal(const player_state_t *s) {
   return s->field[16]!=0 || s->turn_num>=500;
 }
 
-float static_eval(player_state_t *s) {
-  float score = 0;
+int static_eval(player_state_t *s) {
+  int score = 0;
 
   // count spaces and blocks around "5" excluding ojama
   uint16_t flag[18] = {0};
@@ -243,16 +244,18 @@ float static_eval(player_state_t *s) {
   }
   score += skill_ojama[around5]*64;
   score += skill_ojama[effective5]*64;
+
+  return score;
 }
 
-float drop_and_eval(player_state_t *s, int offset, int rotnum) {
-  float score = 0;
+int drop_and_eval(player_state_t *s, int offset, int rotnum) {
+  int score = 0;
   // drop
   int chain = drop(offset, rotnum, s->field, packs[s->turn_num]);
   score += chain_ojama[chain]*256;
 
   // fatal
-  if(isfatal(s))    return -9999999999999999;
+  if(isfatal(s))    return INT_MIN/4;
   // danger
   if(s->field[15])  score -= 1024*1024*4;
   if(s->field[14])  score -= 1024*512;
@@ -262,37 +265,57 @@ float drop_and_eval(player_state_t *s, int offset, int rotnum) {
 }
 
 typedef struct {
-  uint16_t  offset;
-  uint16_t  rotnum;
-  float     score;
+  uint16_t        offset;
+  uint16_t        rotnum;
+  int             score;
 } search_t;
 
-search_t search(player_state_t *s, int recurse_limit) {
-  search_t best_op = {.offset=0, .rotnum=0, .score=-9999999999.0f};
-  for (int offset = 0; offset < 9; offset++) {
-    for (int rotnum = 0; rotnum < 4; rotnum++) {
-      player_state_t t = *s; // copy
-      if(recurse_limit>0) {
-        drop(offset, rotnum, t.field, packs[t.turn_num]);
-        t.turn_num++;
-        if(isfatal(&t)) continue;
-        search_t rslt = search(&t, recurse_limit-1);
-        if(rslt.score<=best_op.score) continue;
+int search_comparator_dec(const void *a, const void *b) {
+  return ((search_t*)b)->score - ((search_t*)a)->score;
+}
 
-        best_op.offset  = offset;
-        best_op.rotnum  = rotnum;
-        best_op.score   = rslt.score;
-      } else {
-        float score = drop_and_eval(&t, offset, rotnum);
-        if(score<=best_op.score) continue;
-
-        best_op.offset  = offset;
-        best_op.rotnum  = rotnum;
-        best_op.score   = score;
-      }
-    }
+search_t search(const player_state_t *s, int recurse_limit) {
+  player_state_t  states[9*4];
+  search_t        ops[9*4];
+  int idx = 0;  // == offset*4+rotnum
+  for (int offset = 0; offset < 9; offset++)
+  for (int rotnum = 0; rotnum < 4; rotnum++) {
+    states[idx] = *s;   // copy field
+    int score = drop_and_eval(&states[idx], offset, rotnum);
+    score += static_eval(&states[idx]);
+    search_t op = {
+      .offset=offset,
+      .rotnum=rotnum,
+      .score=score
+    };
+    ops[idx] = op;
+    states[idx].turn_num++;
+    idx++;
   }
-  return best_op;
+
+  qsort(ops, NELEMS(ops), sizeof(ops[0]), search_comparator_dec);
+
+  if(recurse_limit>0) {
+    // travel to only top 5 ops
+    const int max_search_op = 5;
+    for (int i = 0; i < max_search_op; i++) {
+      search_t *op = &ops[i];
+      idx = op->offset*4+op->rotnum;
+      search_t rslt = search(&states[idx], recurse_limit-1);
+      op->score /= recurse_limit+1;
+      op->score += rslt.score;
+    }
+    /*
+    for (int i = 0; i < max_search_op; i++) {
+      search_t *op = &ops[i];
+      idx = op->offset*4+op->rotnum;
+      DEBUG("%d(%d) ", idx, op->score);
+    }
+    DEBUG("\n");
+    */
+    qsort(ops, max_search_op, sizeof(ops[0]), search_comparator_dec);
+  }
+  return ops[0];
 }
 
 int main(/*int argc, char const* argv[]*/) {
@@ -316,7 +339,7 @@ int main(/*int argc, char const* argv[]*/) {
     if(me.skill_charge>=80) {
       printf("S\n");
     } else {
-      search_t best_op = search(&me, 2);
+      search_t best_op = search(&me, 5);
       dump_field(me.turn_num, me.field);
       printf("%d %d\n", best_op.offset, best_op.rotnum);
     }

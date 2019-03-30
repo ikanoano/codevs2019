@@ -35,7 +35,7 @@ void dump_field(int turn, uint64_t field[18]) {
   for (int y = 17; y >= 0; y--) {
     fprintf(logger, "%2d|", y);
     for (int x = 9; x >= 0; x--) {
-      int val = (field[y]>>(6*x)) & 0x3Ful;
+      int val = (field[y]>>(5*x)) & 0x1Ful;
       char c =
         val ==  0 ? '_' :
         val == 11 ? '#' :
@@ -93,7 +93,7 @@ typedef struct {
   uint64_t  field[18];
 } player_state_t;
 static inline int get_field(uint64_t field[18], int y, int x) {
-  return (field[y] >> (6*x)) & 0x3Ful;
+  return (field[y] >> (5*x)) & 0x1Ful;
 }
 
 void turn_input_player(player_state_t *s) {
@@ -108,7 +108,7 @@ void turn_input_player(player_state_t *s) {
         &block[9], &block[8], &block[7], &block[6], &block[5],
         &block[4], &block[3], &block[2], &block[1], &block[0]);
     uint64_t row = 0;
-    for (int j = 0; j < 10 ; j++) row |= (uint64_t)block[j] << (6*j);
+    for (int j = 0; j < 10 ; j++) row |= (uint64_t)block[j] << (5*j);
     s->field[i] = row;
   }
   sanitize_end();
@@ -127,7 +127,7 @@ int fall(uint64_t field[18]) {
   for (int x = 0; x < 10; x++) {
     int top = 0;
     for (int y = 0; y < 18; y++) {
-      uint64_t mask   = 0x3Ful << (6*x);
+      uint64_t mask   = 0x1Ful << (5*x);
       uint64_t focus  = field[y] & mask;
       if(!focus) continue;
 
@@ -149,10 +149,10 @@ int vanish(uint64_t field[18]) {
 
   // yoko vanish
   for (int y = 0; y < 18; y++) {
-    uint64_t  wa_yoko = field[y] + (field[y]>>6);
-    for (int x = 0; x<9; x++, wa_yoko>>=6) {
+    uint64_t  wa_yoko = field[y] + (field[y]>>5);
+    for (int x = 0; x<9; x++, wa_yoko>>=5) {
       if((wa_yoko & 0xF) == 10) {
-        mask_vanish[y] |= 0xFFFul<<(6*x); // vanish
+        mask_vanish[y] |= 0x3FFul<<(5*x); // vanish
         anyvanish = 1;
         //DEBUG("X%lx\n", wa_yoko);
       }
@@ -162,27 +162,27 @@ int vanish(uint64_t field[18]) {
   // tate & naname vanish
   for (int y = 0; y < 17; y++) {
     uint64_t  wa1 = (field[y]   ) + (field[y+1]   );
-    uint64_t  wa2 = (field[y]>>6) + (field[y+1]   );
-    uint64_t  wa3 = (field[y]   ) + (field[y+1]>>6);
-    for (int x = 0; x < 10; x++, wa1>>=6, wa2>>=6, wa3>>=6) {
+    uint64_t  wa2 = (field[y]>>5) + (field[y+1]   );
+    uint64_t  wa3 = (field[y]   ) + (field[y+1]>>5);
+    for (int x = 0; x < 10; x++, wa1>>=5, wa2>>=5, wa3>>=5) {
       if((wa1 & 0xF) == 10) {
         // tate vanish
-        mask_vanish[y+1] |= 0x3Ful<<(6*x);
-        mask_vanish[y  ] |= 0x3Ful<<(6*x);
+        mask_vanish[y+1] |= 0x1Ful<<(5*x);
+        mask_vanish[y  ] |= 0x1Ful<<(5*x);
         anyvanish = 1;
         //DEBUG("Y%lx\n", wa1);
       }
       if((wa2 & 0xF) == 10) {
         // naname vanish 1
-        mask_vanish[y+1] |= 0x3Ful<<(6* x   );
-        mask_vanish[y  ] |= 0x3Ful<<(6*(x+1));
+        mask_vanish[y+1] |= 0x1Ful<<(5* x   );
+        mask_vanish[y  ] |= 0x1Ful<<(5*(x+1));
         anyvanish = 1;
         //DEBUG("Z%lx\n", wa2);
       }
       if((wa3 & 0xF) == 10) {
         // naname vanish 2
-        mask_vanish[y+1] |= 0x3Ful<<(6*(x+1));
-        mask_vanish[y  ] |= 0x3Ful<<(6* x   );
+        mask_vanish[y+1] |= 0x1Ful<<(5*(x+1));
+        mask_vanish[y  ] |= 0x1Ful<<(5* x   );
         anyvanish = 1;
         //DEBUG("W%lx\n", wa3);
       }
@@ -198,7 +198,8 @@ int vanish(uint64_t field[18]) {
   // count vanished block
   int vcount = 0;
   for (int y = 0; y < 18; y++)
-    vcount += __builtin_popcountll(mask_vanish[y] & 0x041041041041041ul);
+    vcount += __builtin_popcountll(mask_vanish[y] &
+        (0x21ul | (0x21ul<<10) | (0x21ul<<20) | (0x21ul<<30) | (0x21ul<<40)));
   assert(vcount>0);
   return vcount;
 }
@@ -210,11 +211,11 @@ static inline pack_t rotate(pack_t pack, int rotnum) {
 }
 int drop(int offset, int rotnum, uint64_t field[18], pack_t pack) {
   pack = rotate(pack, rotnum);
-  uint64_t mask = (0xFFFul << 6*(8-offset));
+  uint64_t mask = (0x3FFul << 5*(8-offset));
   assert((field[17] & mask) == 0);
   assert((field[16] & mask) == 0);
-  field[17] |= (((uint64_t)pack.b[0]<<6) | pack.b[1]) << 6*(8-offset);
-  field[16] |= (((uint64_t)pack.b[3]<<6) | pack.b[2]) << 6*(8-offset);
+  field[17] |= (((uint64_t)pack.b[0]<<5) | pack.b[1]) << 5*(8-offset);
+  field[16] |= (((uint64_t)pack.b[3]<<5) | pack.b[2]) << 5*(8-offset);
   int chain = -1;
   do {
     fall(field);

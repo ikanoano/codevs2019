@@ -7,6 +7,9 @@
 
 #define NELEMS(x) ((int)(sizeof(x) / sizeof((x)[0])))
 #define DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#ifndef TURN_END
+#define TURN_END  500
+#endif
 
 typedef union {
   uint32_t  raw; //{b[3], b[2], b[1], b[0]}
@@ -309,7 +312,7 @@ int main(/*int argc, char const* argv[]*/) {
 
   init_input();
 
-  for (int turn_num = 0; turn_num < 500; turn_num++) {
+  for (int turn_num = 0; turn_num < TURN_END; turn_num++) {
     player_state_t  me, rival;
     turn_input(&me, &rival);
 

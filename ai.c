@@ -319,9 +319,9 @@ int search_comparator_dec(const void *a, const void *b) {
 search_t search(const player_state_t *s, int recurse_limit) {
   player_state_t  states[9*4];
   search_t        ops[9*4];
-  int idx = 0;  // == offset*4+rotnum
-  for (int offset = 0; offset < 9; offset++)
-  for (int rotnum = 0; rotnum < 4; rotnum++) {
+  int idx = 0;  // == rotnum*9 + offset
+  for (int rotnum = 0; rotnum < 4; rotnum++)
+  for (int offset = 0; offset < 9; offset++) {
     states[idx] = *s;   // copy field
     int score = drop_and_eval(&states[idx], offset, rotnum);
     score += static_eval(&states[idx]);
@@ -339,10 +339,10 @@ search_t search(const player_state_t *s, int recurse_limit) {
 
   if(recurse_limit>0) {
     // travel to only top 5 ops
-    const int max_search_op = 5;
+    const int max_search_op = 4;
     for (int i = 0; i < max_search_op; i++) {
       search_t *op = &ops[i];
-      idx = op->offset*4+op->rotnum;
+      idx = op->rotnum*9 + op->offset;
       search_t rslt = search(&states[idx], recurse_limit-1);
       op->score /= recurse_limit+1;
       op->score += rslt.score;
@@ -381,7 +381,7 @@ int main(/*int argc, char const* argv[]*/) {
     if(me.skill_charge>=80) {
       printf("S\n");
     } else {
-      search_t best_op = search(&me, 5);
+      search_t best_op = search(&me, 7);
       dump_field(me.turn_num, me.field);
       printf("%d %d\n", best_op.offset, best_op.rotnum);
     }

@@ -285,7 +285,7 @@ int static_eval(player_state_t *s) {
     effective5  += __builtin_popcount(flag[y] & ~ojama[y] & ~zero[y]);
   }
   score += skill_ojama[around5]*64;
-  score += skill_ojama[effective5]*64;
+  score += skill_ojama[effective5]*256;
 
   return score;
 }
@@ -294,7 +294,10 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   int score = 0;
   // drop
   int chain = drop(offset, rotnum, s->field, packs[s->turn_num]);
-  score += chain_ojama[chain]*256;
+  score +=
+    chain==0  ? 0 :
+    chain<8   ? (chain_ojama[chain]-9)*256 :
+                 chain_ojama[chain]   *1024;
 
   // fatal
   if(isfatal(s))    return INT_MIN/4;
@@ -302,6 +305,8 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   if(s->field[15])  score -= 1024*1024*4;
   if(s->field[14])  score -= 1024*512;
   if(s->field[13])  score -= 1024*256;
+  if(s->field[12])  score -= 1024*128;
+  if(s->field[11])  score -= 1024*32;
 
   return score;
 }

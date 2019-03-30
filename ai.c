@@ -98,6 +98,9 @@ typedef struct {
 static inline int get_field(uint64_t field[18], int y, int x) {
   return (field[y] >> (5*x)) & 0x1Ful;
 }
+static inline uint64_t is_filled_field(uint64_t field[18], int y, int x) {
+  return field[y] & (0x1Ful<<(5*x));
+}
 
 void turn_input_player(player_state_t *s) {
   scanf("%d", &s->time_left);
@@ -211,17 +214,44 @@ static inline pack_t rotate(pack_t pack, int rotnum) {
 }
 int drop(int offset, int rotnum, uint64_t field[18], pack_t pack) {
   pack = rotate(pack, rotnum);
-  uint64_t mask = (0x3FFul << 5*(8-offset));
-  assert((field[17] & mask) == 0);
-  assert((field[16] & mask) == 0);
-  field[17] |= (((uint64_t)pack.b[0]<<5) | pack.b[1]) << 5*(8-offset);
-  field[16] |= (((uint64_t)pack.b[3]<<5) | pack.b[2]) << 5*(8-offset);
-  int chain = -1;
-  fromto_t ft;
-  do {
+  fromto_t ft = NOFALL;
+  // drop left half
+  for (int y = 0; y < 18; y++) {
+    if(is_filled_field(field, y, 8-offset+1)) continue;
+    if(pack.b[3]) {
+      field[y+1] |= (uint64_t)pack.b[0] << 5*(8-offset+1);
+      field[y+0] |= (uint64_t)pack.b[3] << 5*(8-offset+1);
+      if(ft.from > y  ) ft.from = y;
+      if(ft.to   < y+1) ft.to   = y+1;
+    } else {
+      field[y+0] |= (uint64_t)pack.b[0] << 5*(8-offset+1);
+      if(ft.from > y  ) ft.from = y;
+      if(ft.to   < y  ) ft.to   = y;
+    }
+    break;
+  }
+  // drop right half
+  for (int y = 0; y < 18; y++) {
+    if(is_filled_field(field, y, 8-offset)) continue;
+    if(pack.b[2]) {
+      field[y+1] |= (uint64_t)pack.b[1] << 5*(8-offset);
+      field[y+0] |= (uint64_t)pack.b[2] << 5*(8-offset);
+      if(ft.from > y  ) ft.from = y;
+      if(ft.to   < y+1) ft.to   = y+1;
+    } else {
+      field[y+0] |= (uint64_t)pack.b[1] << 5*(8-offset);
+      if(ft.from > y  ) ft.from = y;
+      if(ft.to   < y  ) ft.to   = y;
+    }
+    break;
+  }
+  assert(memcmp(&ft, &NOFALL, sizeof(fromto_t))); // assert(ft != NOFALL)
+
+  int chain = 0;
+  while(vanish(field, ft)) {
     ft = fall(field);
     chain++;
-  } while(vanish(field, ft));
+  }
   return chain;
 }
 

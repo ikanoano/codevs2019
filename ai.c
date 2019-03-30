@@ -8,6 +8,8 @@
 
 #define NELEMS(x) ((int)(sizeof(x) / sizeof((x)[0])))
 #define DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#define MAX(a,b) ((a)>(b)?(a):(b))
 #ifndef TURN_END
 #define TURN_END  500
 #endif
@@ -123,8 +125,13 @@ void turn_input(player_state_t *me, player_state_t *rival) {
   turn_input_player(rival);
 }
 
-int fall(uint64_t field[18]) {
-  int anyfall = 0;
+typedef struct {
+  int32_t        from;
+  int32_t        to;
+} fromto_t; // closed interval
+const fromto_t NOFALL = {18, -1};
+fromto_t fall(uint64_t field[18]) {
+  fromto_t ft = NOFALL;
   for (int x = 0; x < 10; x++) {
     int top = 0;
     for (int y = 0; y < 18; y++) {
@@ -136,20 +143,24 @@ int fall(uint64_t field[18]) {
         field[y  ] &= ~mask;
         assert((field[top] & mask) == 0); //field[top] &= ~mask;
         field[top] |= focus;
-        anyfall = ~0;
+        if(ft.from > top) ft.from = top;
+        if(ft.to   < y)   ft.to   = y;
       }
       top++;
     }
   }
-  return anyfall;
+  return ft;
 }
 
-int vanish(uint64_t field[18]) {
+int vanish(uint64_t field[18], fromto_t ft) {
+  if(memcmp(&ft, &NOFALL, sizeof(fromto_t))==0) return 0;
+  assert(ft.from<=ft.to);
+
   int anyvanish = 0;
   int vcount = 0;
 
   uint64_t mask_vanish_y0_acc=0;
-  for (int y = 0; y < 18; y++) {
+  for (int y = MAX(ft.from-1,0); y < ft.to+1; y++) {
     uint64_t  mask_vanish_y0=0, mask_vanish_y1=0;
     uint64_t  wa0 = (field[y]   ) +        (field[y]  >>5);       // yoko
     uint64_t  wa1 = (field[y]   ) + y<17 ? (field[y+1]   ) : 0;   // tate
@@ -206,10 +217,11 @@ int drop(int offset, int rotnum, uint64_t field[18], pack_t pack) {
   field[17] |= (((uint64_t)pack.b[0]<<5) | pack.b[1]) << 5*(8-offset);
   field[16] |= (((uint64_t)pack.b[3]<<5) | pack.b[2]) << 5*(8-offset);
   int chain = -1;
+  fromto_t ft;
   do {
-    fall(field);
+    ft = fall(field);
     chain++;
-  } while(vanish(field));
+  } while(vanish(field, ft));
   return chain;
 }
 

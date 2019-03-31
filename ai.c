@@ -259,14 +259,15 @@ int isfatal(const player_state_t *s) {
   return s->field[16]!=0 || s->turn_num>=500;
 }
 
+#define EVAL5_MAXY 13
 int static_eval(player_state_t *s) {
   int score = 0;
 
   // count spaces and blocks around "5" excluding ojama
-  uint16_t flag[18] = {0};
-  uint16_t ojama[18] = {0};
-  uint16_t zero[18] = {0};
-  for (int y = 0; y < 18; y++) {
+  uint16_t flag[EVAL5_MAXY] = {0};
+  uint16_t ojama[EVAL5_MAXY] = {0};
+  uint16_t zero[EVAL5_MAXY] = {0};
+  for (int y = 0; y < EVAL5_MAXY; y++) {
     uint64_t row = s->field[y];
     for (int x = 0; x < 10; x++) {
       int val = row & 0x1F;
@@ -276,15 +277,16 @@ int static_eval(player_state_t *s) {
       if(val!=5) continue;
       if(x>0) {flag[y-1] |= 7<<(x-1);}
               {flag[y  ] |= 7<<(x-1);}
-      if(x<18){flag[y+1] |= 7<<(x-1);}
+      if(x<EVAL5_MAXY){flag[y+1] |= 7<<(x-1);}
     }
   }
   int around5=0, effective5=0;
-  for (int y = 0; y < 18; y++) {
-    around5     += __builtin_popcount(flag[y] & ~ojama[y]);
-    effective5  += __builtin_popcount(flag[y] & ~ojama[y] & ~zero[y]);
+  const uint16_t  range = (1<<10)-1;
+  for (int y = 0; y < EVAL5_MAXY; y++) {
+    around5     += __builtin_popcount(range & flag[y] & ~ojama[y]);
+    effective5  += __builtin_popcount(range & flag[y] & ~ojama[y] & ~zero[y]);
   }
-  score += skill_ojama[around5]*64;
+  score += skill_ojama[around5]*128;
   score += skill_ojama[effective5]*256;
 
   return score;

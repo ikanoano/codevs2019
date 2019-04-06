@@ -1,11 +1,15 @@
-TARGET=/tmp/aaikiso
-CCFLAGS=-lm -std=c11 -O3 -mtune=native -march=native -mfpmath=both -Wall
-SRCS=ai.c
+TARGET		= /tmp/aaikiso
+CCFLAGS		= -lm -std=c11 -O3 -mtune=native -march=native -mfpmath=both -Wall
+SRCS			= ai.c
+CC				= gcc
 
-all: /tmp/aaikiso
+all: $(TARGET)
 
 $(TARGET): $(SRCS)
-	gcc $^ $(CCFLAGS) -o $@
+	$(CC) $^ $(CCFLAGS) -o $@
 
 prof: $(SRCS)
-	gcc $^ $(CCFLAGS) -DTURN_END=20 -pg -o $(TARGET)
+	$(CC) $^ $(CCFLAGS) -DTURN_END=20 -pg -o $(TARGET)
+
+# solve dependencies
+$(foreach SRC,$(SRCS),$(eval $(subst \,,$(shell $(CC) -MM $(SRC)))))

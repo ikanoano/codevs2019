@@ -6,20 +6,7 @@
 #include <assert.h>
 #include <limits.h>
 
-#define NELEMS(x) ((int)(sizeof(x) / sizeof((x)[0])))
-#define DEBUG(...) fprintf(stderr, __VA_ARGS__)
-#define MIN(a,b) ((a)<(b)?(a):(b))
-#define MAX(a,b) ((a)>(b)?(a):(b))
-#ifndef TURN_END
-#define TURN_END  500
-#endif
-
-typedef union {
-  uint32_t  raw; //{b[3], b[2], b[1], b[0]}
-  uint8_t   b[4];
-  /* b[0] b[1]
-   * b[3] b[2] */
-} pack_t;
+#include "ai.h"
 
 static int        chain_ojama[64];
 static int        skill_ojama[192];
@@ -32,13 +19,14 @@ void sanitize_end() {
   if(strcmp(end, "END")) {DEBUG("end?\n"); exit(1);}
 }
 
-void dump_field(int turn, uint64_t field[18]) {
+void dump_field(player_state_t *s) {
+  int turn = s->turn_num;
   fprintf(logger, "turn %3d\n", turn);
   fprintf(logger, "   9876543210\n");
   for (int y = 17; y >= 0; y--) {
     fprintf(logger, "%2d|", y);
     for (int x = 9; x >= 0; x--) {
-      int val = (field[y]>>(5*x)) & 0x1Ful;
+      int val = (s->field[y]>>(5*x)) & 0x1Ful;
       char c =
         val ==  0 ? '_' :
         val == 11 ? '#' :
@@ -88,34 +76,24 @@ void init_input() {
   }
 }
 
-typedef struct {
-  int       turn_num;
-  int       time_left;
-  int       ojama_left;
-  int       skill_charge;
-  uint64_t  field[18];
-} player_state_t;
-static inline int get_field(uint64_t field[18], int y, int x) {
-  return (field[y] >> (5*x)) & 0x1Ful;
-}
-static inline uint64_t is_filled_field(uint64_t field[18], int y, int x) {
-  return field[y] & (0x1Ful<<(5*x));
-}
-
 void turn_input_player(player_state_t *s) {
   scanf("%d", &s->time_left);
   scanf("%d", &s->ojama_left);
   scanf("%d", &s->skill_charge);
 
   s->field[17] = s->field[16] = 0;
-  for (int i = 15; i >= 0; i--) {
+  for (int x = 0; x < 10 ; x++) s->top[x] = 0;
+  for (int y = 15; y >= 0; y--) {
     int block[10];
     scanf("%d %d %d %d %d %d %d %d %d %d",
         &block[9], &block[8], &block[7], &block[6], &block[5],
         &block[4], &block[3], &block[2], &block[1], &block[0]);
     uint64_t row = 0;
-    for (int j = 0; j < 10 ; j++) row |= (uint64_t)block[j] << (5*j);
-    s->field[i] = row;
+    for (int x = 0; x < 10 ; x++) {
+      if(block[x] && s->top[x]==0) s->top[x] = y+1;
+      row |= (uint64_t)block[x] << (5*x);
+    }
+    s->field[y] = row;
   }
   sanitize_end();
 }
@@ -128,35 +106,31 @@ void turn_input(player_state_t *me, player_state_t *rival) {
   turn_input_player(rival);
 }
 
-typedef struct {
-  int32_t        from;
-  int32_t        to;
-} fromto_t; // closed interval
-const fromto_t NOFALL = {18, -1};
-fromto_t fall(uint64_t field[18]) {
+fromto_t fall(player_state_t *s) {
   fromto_t ft = NOFALL;
   for (int x = 0; x < 10; x++) {
-    int top = 0;
+    int top = 0; // this top points empty
     for (int y = 0; y < 18; y++) {
       uint64_t mask   = 0x1Ful << (5*x);
-      uint64_t focus  = field[y] & mask;
+      uint64_t focus  = s->field[y] & mask;
       if(!focus) continue;
 
       if(top!=y) { // fall
-        field[y  ] &= ~mask;
-        assert((field[top] & mask) == 0); //field[top] &= ~mask;
-        field[top] |= focus;
+        s->field[y  ] &= ~mask;
+        assert((s->field[top] & mask) == 0); //field[top] &= ~mask;
+        s->field[top] |= focus;
         if(ft.from > top) ft.from = top;
         if(ft.to   < y)   ft.to   = y;
       }
       top++;
     }
+    s->top[x] = top;
   }
   return ft;
 }
 
-int vanish(uint64_t field[18], fromto_t ft) {
-  if(memcmp(&ft, &NOFALL, sizeof(fromto_t))==0) return 0;
+int vanish(player_state_t *s, fromto_t ft) {
+  if(is_nofall(&ft)) return 0;
   assert(ft.from<=ft.to);
 
   int anyvanish = 0;
@@ -165,10 +139,10 @@ int vanish(uint64_t field[18], fromto_t ft) {
   uint64_t mask_vanish_y0_acc=0;
   for (int y = MAX(ft.from-1,0); y < ft.to+1; y++) {
     uint64_t  mask_vanish_y0=0, mask_vanish_y1=0;
-    uint64_t  wa0 = (field[y]   ) +        (field[y]  >>5);       // yoko
-    uint64_t  wa1 = (field[y]   ) + y<17 ? (field[y+1]   ) : 0;   // tate
-    uint64_t  wa2 = (field[y]>>5) + y<17 ? (field[y+1]   ) : 0;   // migiue
-    uint64_t  wa3 = (field[y]   ) + y<17 ? (field[y+1]>>5) : 0;   // migishita
+    uint64_t  wa0 = (s->field[y]   ) +        (s->field[y]  >>5);       // yoko
+    uint64_t  wa1 = (s->field[y]   ) + y<17 ? (s->field[y+1]   ) : 0;   // tate
+    uint64_t  wa2 = (s->field[y]>>5) + y<17 ? (s->field[y+1]   ) : 0;   // migiue
+    uint64_t  wa3 = (s->field[y]   ) + y<17 ? (s->field[y+1]>>5) : 0;   // migishita
     for (int x = 0; x < 10; x++, wa0>>=5, wa1>>=5, wa2>>=5, wa3>>=5) {
       mask_vanish_y1 >>= 5;
       mask_vanish_y0 >>= 5;
@@ -196,7 +170,7 @@ int vanish(uint64_t field[18], fromto_t ft) {
     }
     mask_vanish_y0 |= mask_vanish_y0_acc;
     // execute
-    field[y] &= ~mask_vanish_y0;
+    s->field[y] &= ~mask_vanish_y0;
     // count vanished block
     vcount += __builtin_popcountll(mask_vanish_y0 &
         ((0x21ul<<40) | (0x21ul<<30) | (0x21ul<<20) | (0x21ul<<10) | 0x21ul));
@@ -207,60 +181,57 @@ int vanish(uint64_t field[18], fromto_t ft) {
   return vcount;
 }
 
-static inline pack_t rotate(pack_t pack, int rotnum) {
-  pack_t rp;
-  rp.raw = (pack.raw << (rotnum*8)) | (pack.raw >> ((4-rotnum)*8));
-  return rp;
-}
-int drop(int offset, int rotnum, uint64_t field[18], pack_t pack) {
-  pack = rotate(pack, rotnum);
+int drop(int offset, int rotnum, player_state_t *s) {
+  pack_t pack = rotate(packs[s->turn_num], rotnum);
   fromto_t ft = NOFALL;
   // drop left half
-  for (int y = 0; y < 18; y++) {
-    if(is_filled_field(field, y, 8-offset+1)) continue;
+  {
+    int x = 8-offset+1;
+    int y = s->top[x];
     if(pack.b[3]) {
-      field[y+1] |= (uint64_t)pack.b[0] << 5*(8-offset+1);
-      field[y+0] |= (uint64_t)pack.b[3] << 5*(8-offset+1);
-      if(ft.from > y  ) ft.from = y;
-      if(ft.to   < y+1) ft.to   = y+1;
+      s->field[y+1] |= (uint64_t)pack.b[0] << 5*x;
+      s->field[y+0] |= (uint64_t)pack.b[3] << 5*x;
+      ft.from = y;
+      ft.to   = y+1;
+      s->top[x]+=2;
     } else {
-      field[y+0] |= (uint64_t)pack.b[0] << 5*(8-offset+1);
-      if(ft.from > y  ) ft.from = y;
-      if(ft.to   < y  ) ft.to   = y;
+      assert(pack.b[0]);
+      s->field[y+0] |= (uint64_t)pack.b[0] << 5*x;
+      ft.from = y;
+      ft.to   = y;
+      s->top[x]+=1;
     }
-    break;
   }
   // drop right half
-  for (int y = 0; y < 18; y++) {
-    if(is_filled_field(field, y, 8-offset)) continue;
+  {
+    int x = 8-offset;
+    int y = s->top[x];
     if(pack.b[2]) {
-      field[y+1] |= (uint64_t)pack.b[1] << 5*(8-offset);
-      field[y+0] |= (uint64_t)pack.b[2] << 5*(8-offset);
-      if(ft.from > y  ) ft.from = y;
-      if(ft.to   < y+1) ft.to   = y+1;
+      s->field[y+1] |= (uint64_t)pack.b[1] << 5*x;
+      s->field[y+0] |= (uint64_t)pack.b[2] << 5*x;
+      ft.from = MIN(y  , ft.from);
+      ft.to   = MAX(y+1, ft.to);
+      s->top[x]+=2;
     } else {
-      field[y+0] |= (uint64_t)pack.b[1] << 5*(8-offset);
-      if(ft.from > y  ) ft.from = y;
-      if(ft.to   < y  ) ft.to   = y;
+      assert(pack.b[1]);
+      s->field[y+0] |= (uint64_t)pack.b[1] << 5*x;
+      ft.from = MIN(y  , ft.from);
+      ft.to   = MAX(y  , ft.to);
+      s->top[x]+=1;
     }
-    break;
   }
-  assert(memcmp(&ft, &NOFALL, sizeof(fromto_t))); // assert(ft != NOFALL)
+  assert(!is_nofall(&ft)); // assert(ft != NOFALL)
 
   int chain = 0;
-  while(vanish(field, ft)) {
-    ft = fall(field);
+  while(vanish(s, ft)) {
+    ft = fall(s);
     chain++;
   }
   return chain;
 }
 
-int isfatal(const player_state_t *s) {
-  return s->field[16]!=0 || s->turn_num>=500;
-}
-
 #define EVAL5_MAXY 13
-int static_eval(player_state_t *s) {
+int static_eval(player_state_t *s, int tail_col) {
   int score = 0;
 
   // count spaces and blocks around "5" excluding ojama
@@ -289,13 +260,20 @@ int static_eval(player_state_t *s) {
   score += skill_ojama[around5]*128;
   score += skill_ojama[effective5]*256;
 
+  // evaluate additional chain
+  for (int x = MAX(0, tail_col-1); x < MIN(9, tail_col+1); x++) {
+    for (int num = 0; num < 10; num++) {
+      //TODO
+    }
+  }
+
   return score;
 }
 
 int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   int score = 0;
   // drop
-  int chain = drop(offset, rotnum, s->field, packs[s->turn_num]);
+  int chain = drop(offset, rotnum, s);
   score +=
     chain==0  ? 0 :
     chain<8   ? (chain_ojama[chain]-9)*256 :
@@ -313,12 +291,6 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   return score;
 }
 
-typedef struct {
-  uint16_t        offset;
-  uint16_t        rotnum;
-  int             score;
-} search_t;
-
 int search_comparator_dec(const void *a, const void *b) {
   return ((search_t*)b)->score - ((search_t*)a)->score;
 }
@@ -331,7 +303,7 @@ search_t search(const player_state_t *s, int recurse_limit) {
   for (int offset = 0; offset < 9; offset++) {
     states[idx] = *s;   // copy field
     int score = drop_and_eval(&states[idx], offset, rotnum);
-    score += static_eval(&states[idx]);
+    score += static_eval(&states[idx], 0/*FIXME: dummy*/);
     search_t op = {
       .offset=offset,
       .rotnum=rotnum,
@@ -389,7 +361,7 @@ int main(/*int argc, char const* argv[]*/) {
       printf("S\n");
     } else {
       search_t best_op = search(&me, 7);
-      dump_field(me.turn_num, me.field);
+      dump_field(&me);
       printf("%d %d\n", best_op.offset, best_op.rotnum);
     }
     fflush(stdout);

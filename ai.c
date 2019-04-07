@@ -137,12 +137,12 @@ int vanish(player_state_t *s, fromto_t ft) {
   int vcount = 0;
 
   uint64_t mask_vanish_y0_acc=0;
-  for (int y = MAX(ft.from-1,0); y < ft.to+1; y++) {
+  for (int y = MAX(ft.from-1,0); y < MIN(ft.to+1, 18); y++) {
     uint64_t  mask_vanish_y0=0, mask_vanish_y1=0;
-    uint64_t  wa0 = (s->field[y]   ) +        (s->field[y]  >>5);       // yoko
-    uint64_t  wa1 = (s->field[y]   ) + y<17 ? (s->field[y+1]   ) : 0;   // tate
-    uint64_t  wa2 = (s->field[y]>>5) + y<17 ? (s->field[y+1]   ) : 0;   // migiue
-    uint64_t  wa3 = (s->field[y]   ) + y<17 ? (s->field[y+1]>>5) : 0;   // migishita
+    uint64_t  wa0 = (s->field[y]   ) +         (s->field[y]  >>5);        // yoko
+    uint64_t  wa1 = (s->field[y]   ) + (y<17 ? (s->field[y+1]   ) : 0ul); // tate
+    uint64_t  wa2 = (s->field[y]>>5) + (y<17 ? (s->field[y+1]   ) : 0ul); // migiue
+    uint64_t  wa3 = (s->field[y]   ) + (y<17 ? (s->field[y+1]>>5) : 0ul); // migishita
     for (int x = 0; x < 10; x++, wa0>>=5, wa1>>=5, wa2>>=5, wa3>>=5) {
       mask_vanish_y1 >>= 5;
       mask_vanish_y0 >>= 5;

@@ -2,7 +2,7 @@
 #include <string.h>
 
 #define NELEMS(x) ((int)(sizeof(x) / sizeof((x)[0])))
-#define DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define DEBUG(...) fprintf(logger, __VA_ARGS__)
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #ifndef TURN_END
@@ -31,10 +31,10 @@ typedef struct {
   uint8_t   top[10];  // this top points empty space
 } player_state_t;
 
-static inline int get_field(uint64_t field[18], int y, int x) {
+static inline int get_field(const uint64_t field[18], int y, int x) {
   return (field[y] >> (5*x)) & 0x1Ful;
 }
-static inline uint64_t is_filled_field(player_state_t *s, int y, int x) {
+static inline uint64_t is_filled_field(const player_state_t *s, int y, int x) {
   return s->top[x] > y;
 }
 static inline int isfatal(const player_state_t *s) {
@@ -46,10 +46,14 @@ typedef struct {
   int32_t        to;
 } fromto_t; // closed interval
 
-const fromto_t NOFALL = {18, -1};
+const fromto_t NOFALL   = {18, -1};
+const fromto_t ALLFALL  = {0, 17};
 
-static inline int is_nofall(fromto_t *ft) {
+static inline int is_nofall(const fromto_t *ft) {
   return memcmp(ft, &NOFALL, sizeof(fromto_t))==0;
+}
+static inline int is_anyfall(const fromto_t *ft) {
+  return !is_nofall(ft);
 }
 
 typedef struct {

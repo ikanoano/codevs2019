@@ -1,6 +1,6 @@
 TARGET		= /tmp/aaikiso
-CCFLAGS		= -lm -std=c11 -O3 -mtune=native -march=native -mfpmath=both -Wall
-SRCS			= ai.c
+CCFLAGS		= -lm -std=c11 -O3 -mtune=native -march=native -mfpmath=both -Wall -Wextra
+SRCS			= ai.c ai.h
 CC				= gcc
 
 all: $(TARGET)

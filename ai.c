@@ -19,7 +19,7 @@ void sanitize_end() {
   if(strcmp(end, "END")) {DEBUG("end?\n"); exit(1);}
 }
 
-void dump_field(player_state_t *s) {
+void dump_field(const player_state_t *s) {
   int turn = s->turn_num;
   fprintf(logger, "turn %3d\n", turn);
   fprintf(logger, "   9876543210\n");
@@ -40,6 +40,9 @@ void dump_field(player_state_t *s) {
 }
 
 void init() {
+  logger = fopen("/tmp/aaikiso_log", "w");
+  if(logger == NULL) {fprintf(stderr, "error logger\n"); exit(1);}
+
   srand(13);
 
   int chain_score = 0;
@@ -47,18 +50,15 @@ void init() {
   for (int i = 1; i < NELEMS(chain_ojama); i++) {
     chain_score += (int)pow(1.3, i);
     chain_ojama[i] = chain_score/2;
-    //DEBUG("%3d chain = %8d ojama\n", i, chain_ojama[i]);
+    DEBUG("%3d chain = %8d ojama\n", i, chain_ojama[i]);
   }
 
   skill_ojama[0] = 0;
   for (int i = 1; i < NELEMS(skill_ojama); i++) {
     int skill_score = (int)(25.0*pow(2, i/12.0));
     skill_ojama[i] = skill_score/2;
-    //DEBUG("%3d  bomb = %8d ojama\n", i, skill_ojama[i]);
+    DEBUG("%3d  bomb = %8d ojama\n", i, skill_ojama[i]);
   }
-
-  logger = fopen("/tmp/aaikiso_log", "w");
-  if(logger == NULL) {DEBUG("error logger\n"); exit(1);}
 }
 
 void init_input() {
@@ -119,8 +119,8 @@ fromto_t fall(player_state_t *s) {
         s->field[y  ] &= ~mask;
         assert((s->field[top] & mask) == 0); //field[top] &= ~mask;
         s->field[top] |= focus;
-        if(ft.from > top) ft.from = top;
-        if(ft.to   < y)   ft.to   = y;
+        ft.from = MIN(top, ft.from);
+        ft.to   = MAX(y,   ft.to);
       }
       top++;
     }

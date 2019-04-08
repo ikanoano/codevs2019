@@ -181,6 +181,7 @@ int vanish(player_state_t *s, fromto_t ft) {
   return vcount;
 }
 
+// return -1 if fail
 int drop(int offset, int rotnum, player_state_t *s) {
   pack_t pack = rotate(packs[s->turn_num], rotnum);
   fromto_t ft = NOFALL;
@@ -189,6 +190,7 @@ int drop(int offset, int rotnum, player_state_t *s) {
   {
     int x = 8-offset+1;
     int y = s->top[x];
+    if(y>=17) return -1;
     //assert(get_field(s->field, y, x)==0 && (y==0 || get_field(s->field, y-1, x)!=0));
     if(pack.b[3]) {
       s->field[y+1] |= (uint64_t)pack.b[0] << 5*x;
@@ -208,6 +210,7 @@ int drop(int offset, int rotnum, player_state_t *s) {
   {
     int x = 8-offset;
     int y = s->top[x];
+    if(y>=17) return -1;
     //assert(get_field(s->field, y, x)==0 && (y==0 || get_field(s->field, y-1, x)!=0));
     if(pack.b[2]) {
       s->field[y+1] |= (uint64_t)pack.b[1] << 5*x;
@@ -274,13 +277,13 @@ int static_eval(const player_state_t *s, int tail_col) {
   score += skill_ojama[effective5]*256;
 
   // evaluate additional chain
-  if(s->field[16] || s->field[15]) return score;  // tsumiageru na
   //for (int x = MAX(0, tail_col-1); x < MIN(10, tail_col+1); x++) {
   int maxchain = 0;
   for (int x = 0; x < 10; x++) {
+    const int y = s->top[x];
+    if(y>13) continue;  // tsumiageru na
     for (int num = 1; num < 10; num++) {
       player_state_t t = *s;
-      int y = t.top[x];
       t.top[x]++;
       t.turn_num++;
       // drop
@@ -311,6 +314,7 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   int score = 0;
   // drop
   int chain = drop(offset, rotnum, s);
+  if(chain<0) return INT_MIN/64;
   score +=
     chain==0  ? 0 :
     chain<8   ? (chain_ojama[chain]-9)*256 :

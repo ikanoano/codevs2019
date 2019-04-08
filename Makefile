@@ -10,6 +10,3 @@ $(TARGET): $(SRCS)
 
 prof: $(SRCS)
 	$(CC) $^ $(CCFLAGS) -DTURN_END=20 -pg -o $(TARGET)
-
-# solve dependencies
-$(foreach SRC,$(SRCS),$(eval $(subst \,,$(shell $(CC) -MM $(SRC)))))

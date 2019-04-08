@@ -184,10 +184,12 @@ int vanish(player_state_t *s, fromto_t ft) {
 int drop(int offset, int rotnum, player_state_t *s) {
   pack_t pack = rotate(packs[s->turn_num], rotnum);
   fromto_t ft = NOFALL;
+
   // drop left half
   {
     int x = 8-offset+1;
     int y = s->top[x];
+    //assert(get_field(s->field, y, x)==0 && (y==0 || get_field(s->field, y-1, x)!=0));
     if(pack.b[3]) {
       s->field[y+1] |= (uint64_t)pack.b[0] << 5*x;
       s->field[y+0] |= (uint64_t)pack.b[3] << 5*x;
@@ -206,6 +208,7 @@ int drop(int offset, int rotnum, player_state_t *s) {
   {
     int x = 8-offset;
     int y = s->top[x];
+    //assert(get_field(s->field, y, x)==0 && (y==0 || get_field(s->field, y-1, x)!=0));
     if(pack.b[2]) {
       s->field[y+1] |= (uint64_t)pack.b[1] << 5*x;
       s->field[y+0] |= (uint64_t)pack.b[2] << 5*x;
@@ -220,19 +223,29 @@ int drop(int offset, int rotnum, player_state_t *s) {
       s->top[x]+=1;
     }
   }
-  assert(!is_nofall(&ft)); // assert(ft != NOFALL)
+  //assert(is_anyfall(&ft)); // assert(ft != NOFALL)
 
   int chain = 0;
   while(vanish(s, ft)) {
     ft = fall(s);
     chain++;
   }
+  //nf = fall(s);
+  //assert(is_nofall(&nf));
   return chain;
 }
 
 #define EVAL5_MAXY 13
-int static_eval(player_state_t *s, int tail_col) {
+int static_eval(const player_state_t *s, int tail_col) {
   int score = 0;
+  // fatal
+  if(isfatal(s))    return INT_MIN/4;
+  // danger
+  if(s->field[15])  score -= 1024*1024*4;
+  if(s->field[14])  score -= 1024*512;
+  if(s->field[13])  score -= 1024*256;
+  if(s->field[12])  score -= 1024*128;
+  if(s->field[11])  score -= 1024*32;
 
   // count spaces and blocks around "5" excluding ojama
   uint16_t flag[EVAL5_MAXY] = {0};
@@ -261,11 +274,34 @@ int static_eval(player_state_t *s, int tail_col) {
   score += skill_ojama[effective5]*256;
 
   // evaluate additional chain
-  for (int x = MAX(0, tail_col-1); x < MIN(9, tail_col+1); x++) {
-    for (int num = 0; num < 10; num++) {
-      //TODO
+  //for (int x = MAX(0, tail_col-1); x < MIN(10, tail_col+1); x++) {
+  int maxchain = 0;
+  for (int x = 0; x < 10; x++) {
+    for (int num = 1; num < 10; num++) {
+      player_state_t t = *s;
+      int y = t.top[x];
+      t.top[x]++;
+      t.turn_num++;
+      // drop
+      t.field[y] |= (uint64_t)num << 5*x;
+      if(!(get_field(t.field, y+1, x)==0 && get_field(t.field, y, x)!=0)) {
+        DEBUG("akan yatsu | x=%d ,num=%d\n", x, num);
+        dump_field(s);
+        dump_field(&t);
+        assert(get_field(t.field, y+1, x)==0 && get_field(t.field, y, x)!=0);
+      }
+      // fall and vanish
+      fromto_t ft = {y, y};
+      int chain = 0;
+      while(vanish(&t, ft)) {
+        ft = fall(&t);
+        chain++;
+      }
+      maxchain = MAX(maxchain, chain);
     }
   }
+  score += maxchain<3 ? 0 : chain_ojama[maxchain]*512;
+  if(maxchain>7) DEBUG("maxchain=%d, score=%d\n", maxchain, score);
 
   return score;
 }
@@ -278,15 +314,6 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
     chain==0  ? 0 :
     chain<8   ? (chain_ojama[chain]-9)*256 :
                  chain_ojama[chain]   *1024;
-
-  // fatal
-  if(isfatal(s))    return INT_MIN/4;
-  // danger
-  if(s->field[15])  score -= 1024*1024*4;
-  if(s->field[14])  score -= 1024*512;
-  if(s->field[13])  score -= 1024*256;
-  if(s->field[12])  score -= 1024*128;
-  if(s->field[11])  score -= 1024*32;
 
   return score;
 }
@@ -360,7 +387,7 @@ int main(/*int argc, char const* argv[]*/) {
     if(me.skill_charge>=80) {
       printf("S\n");
     } else {
-      search_t best_op = search(&me, 7);
+      search_t best_op = search(&me, 5);
       dump_field(&me);
       printf("%d %d\n", best_op.offset, best_op.rotnum);
     }

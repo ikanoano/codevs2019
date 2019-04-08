@@ -274,6 +274,7 @@ int static_eval(const player_state_t *s, int tail_col) {
   score += skill_ojama[effective5]*256;
 
   // evaluate additional chain
+  if(s->field[16] || s->field[15]) return score;  // tsumiageru na
   //for (int x = MAX(0, tail_col-1); x < MIN(10, tail_col+1); x++) {
   int maxchain = 0;
   for (int x = 0; x < 10; x++) {

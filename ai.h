@@ -50,7 +50,7 @@ const fromto_t NOFALL   = {18, -1};
 const fromto_t ALLFALL  = {0, 17};
 
 static inline int is_nofall(const fromto_t *ft) {
-  return memcmp(ft, &NOFALL, sizeof(fromto_t))==0;
+  return ft->from==NOFALL.from && ft->to==NOFALL.to;
 }
 static inline int is_anyfall(const fromto_t *ft) {
   return !is_nofall(ft);

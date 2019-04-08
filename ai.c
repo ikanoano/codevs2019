@@ -242,7 +242,7 @@ int drop(int offset, int rotnum, player_state_t *s) {
 int static_eval(const player_state_t *s, int tail_col) {
   int score = 0;
   // fatal
-  if(isfatal(s))    return INT_MIN/4;
+  if(isfatal(s))    return INT_MIN/64;
   // danger
   if(s->field[15])  score -= 1024*1024*4;
   if(s->field[14])  score -= 1024*512;
@@ -327,12 +327,12 @@ int search_comparator_dec(const void *a, const void *b) {
   return ((search_t*)b)->score - ((search_t*)a)->score;
 }
 
-search_t search(const player_state_t *s, int recurse_limit) {
+search_t search(const player_state_t *s, const int recurse_limit) {
   player_state_t  states[9*4];
   search_t        ops[9*4];
-  int idx = 0;  // == rotnum*9 + offset
   for (int rotnum = 0; rotnum < 4; rotnum++)
   for (int offset = 0; offset < 9; offset++) {
+    const int idx = rotnum*9 + offset;
     states[idx] = *s;   // copy field
     int score = drop_and_eval(&states[idx], offset, rotnum);
     score += static_eval(&states[idx], 0/*FIXME: dummy*/);
@@ -343,17 +343,16 @@ search_t search(const player_state_t *s, int recurse_limit) {
     };
     ops[idx] = op;
     states[idx].turn_num++;
-    idx++;
   }
 
-  qsort(ops, NELEMS(ops), sizeof(ops[0]), search_comparator_dec);
+  qsort(ops, 4*9, sizeof(ops[0]), search_comparator_dec);
 
   if(recurse_limit>0) {
     // travel to only top 5 ops
     const int max_search_op = 4;
     for (int i = 0; i < max_search_op; i++) {
       search_t *op = &ops[i];
-      idx = op->rotnum*9 + op->offset;
+      const int idx = op->rotnum*9 + op->offset;
       search_t rslt = search(&states[idx], recurse_limit-1);
       op->score /= recurse_limit+1;
       op->score += rslt.score;

@@ -50,7 +50,9 @@ void init() {
   for (int i = 1; i < NELEMS(chain_ojama); i++) {
     chain_score += (int)pow(1.3, i);
     chain_ojama[i] = chain_score/2;
-    DEBUG("%3d chain = %8d ojama\n", i, chain_ojama[i]);
+    DEBUG("%3d chain = %8d ojama", i, chain_ojama[i]);
+    if(i>15) chain_ojama[i]=0;
+    DEBUG("-> %8d ojama\n", chain_ojama[i]);
   }
 
   skill_ojama[0] = 0;
@@ -250,6 +252,9 @@ int static_eval(const player_state_t *s, int tail_col) {
   if(s->field[12])  score -= 1024*128;
   if(s->field[11])  score -= 1024*32;
 
+  // ojama dame
+  score -= s->ojama_left < 6 ? 0 : (s->ojama_left*logf(s->ojama_left)*128);
+
   // count spaces and blocks around "5" excluding ojama
   uint16_t flag[EVAL5_MAXY] = {0};
   uint16_t ojama[EVAL5_MAXY] = {0};
@@ -304,7 +309,7 @@ int static_eval(const player_state_t *s, int tail_col) {
       maxchain = MAX(maxchain, chain);
     }
   }
-  score += maxchain<3 ? 0 : chain_ojama[maxchain]*512;
+  score += maxchain<3 ? 0 : chain_ojama[maxchain]*1024*4;
   if(maxchain>7) DEBUG("maxchain=%d, score=%d\n", maxchain, score);
 
   return score;
@@ -317,7 +322,7 @@ int drop_and_eval(player_state_t *s, int offset, int rotnum) {
   if(chain<0) return INT_MIN/64;
   score +=
     chain==0  ? 0 :
-    chain<8   ? (chain_ojama[chain]-9)*256 :
+    chain<3   ? (chain_ojama[chain]-4)*256 :
                  chain_ojama[chain]   *1024;
 
   return score;

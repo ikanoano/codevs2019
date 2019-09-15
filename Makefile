@@ -10,3 +10,6 @@ $(TARGET): $(SRCS)
 
 prof: $(SRCS)
 	$(CC) $^ $(CCFLAGS) -DTURN_END=20 -pg -o $(TARGET)
+
+valgrind: $(SRCS)
+	$(CC) $^ $(CCFLAGS) -g -o $(TARGET)
